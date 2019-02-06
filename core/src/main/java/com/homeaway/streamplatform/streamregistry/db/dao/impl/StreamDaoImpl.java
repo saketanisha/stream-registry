@@ -45,7 +45,7 @@ import com.homeaway.streamplatform.streamregistry.extensions.validation.StreamVa
 import com.homeaway.streamplatform.streamregistry.model.Stream;
 import com.homeaway.streamplatform.streamregistry.model.Tags;
 import com.homeaway.streamplatform.streamregistry.provider.InfraManager;
-import com.homeaway.streamplatform.streamregistry.streams.GlobalKafkaStore;
+import com.homeaway.streamplatform.streamregistry.streams.ManagedKStreams;
 import com.homeaway.streamplatform.streamregistry.streams.StreamProducer;
 
 @Slf4j
@@ -55,7 +55,7 @@ public class StreamDaoImpl extends AbstractDao implements StreamDao, StreamValid
     private SchemaManager schemaManager;
 
     public StreamDaoImpl(StreamProducer streamProducer,
-                         GlobalKafkaStore kStreams,
+                         ManagedKStreams kStreams,
                          String env,
                          RegionDao regionDao,
                          InfraManager infraManager,

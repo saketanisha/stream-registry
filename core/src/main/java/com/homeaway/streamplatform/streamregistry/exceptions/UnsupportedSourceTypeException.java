@@ -16,16 +16,16 @@
 package com.homeaway.streamplatform.streamregistry.exceptions;
 
 @SuppressWarnings({"WeakerAccess", "unused"})
-public  class UnsupportedSourceType extends RuntimeException {
+public  class UnsupportedSourceTypeException extends RuntimeException {
 
     protected final String sourceType;
 
-    public UnsupportedSourceType(Throwable cause, String streamName) {
+    public UnsupportedSourceTypeException(Throwable cause, String streamName) {
         super(cause);
         this.sourceType = streamName;
     }
 
-    public UnsupportedSourceType(String sourceType) {
+    public UnsupportedSourceTypeException(String sourceType) {
         this.sourceType = sourceType;
     }
 

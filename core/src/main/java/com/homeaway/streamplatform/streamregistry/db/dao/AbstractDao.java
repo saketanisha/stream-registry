@@ -39,7 +39,7 @@ import com.homeaway.digitalplatform.streamregistry.OperationType;
 import com.homeaway.digitalplatform.streamregistry.RegionStreamConfiguration;
 import com.homeaway.streamplatform.streamregistry.exceptions.ClusterNotFoundException;
 import com.homeaway.streamplatform.streamregistry.provider.InfraManager;
-import com.homeaway.streamplatform.streamregistry.streams.GlobalKafkaStore;
+import com.homeaway.streamplatform.streamregistry.streams.ManagedKStreams;
 import com.homeaway.streamplatform.streamregistry.streams.StreamProducer;
 
 @Slf4j
@@ -55,7 +55,7 @@ public abstract class AbstractDao {
 
     protected final StreamProducer<AvroStreamKey, AvroStream> kafkaProducer;
 
-    protected final GlobalKafkaStore kStreams;
+    protected final ManagedKStreams kStreams;
 
     protected final String env;
 
@@ -66,7 +66,7 @@ public abstract class AbstractDao {
     protected final KafkaManager kafkaManager;
 
     public AbstractDao(StreamProducer streamProducer,
-                       GlobalKafkaStore kStreams,
+                       ManagedKStreams kStreams,
                        String env,
                        RegionDao regionDao,
                        InfraManager infraManager,

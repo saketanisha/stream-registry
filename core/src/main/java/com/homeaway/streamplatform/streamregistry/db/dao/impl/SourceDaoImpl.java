@@ -15,6 +15,11 @@
  */
 package com.homeaway.streamplatform.streamregistry.db.dao.impl;
 
+import static com.homeaway.streamplatform.streamregistry.model.SourceType.SOURCE_TYPES;
+
+import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
@@ -41,6 +46,7 @@ import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.kstream.KStreamBuilder;
+import org.apache.kafka.streams.state.KeyValueIterator;
 import org.apache.kafka.streams.state.QueryableStoreTypes;
 import org.apache.kafka.streams.state.ReadOnlyKeyValueStore;
 
@@ -53,6 +59,7 @@ import com.homeaway.digitalplatform.streamregistry.SourceStopRequested;
 import com.homeaway.digitalplatform.streamregistry.SourceUpdateRequested;
 import com.homeaway.streamplatform.streamregistry.db.dao.SourceDao;
 import com.homeaway.streamplatform.streamregistry.exceptions.SourceNotFoundException;
+import com.homeaway.streamplatform.streamregistry.exceptions.UnsupportedSourceTypeException;
 import com.homeaway.streamplatform.streamregistry.model.Source;
 import com.homeaway.streamplatform.streamregistry.streams.KStreamsProcessorListener;
 
@@ -86,6 +93,9 @@ public class SourceDaoImpl implements SourceDao, Managed {
     public static final String SOURCE_COMMANDS_TOPIC = "source-command-events-v1";
 
     public static final String SOURCE_COMMANDS_PROCESSOR_APP_ID = "source-commands-processor-v1";
+
+    public static final File SOURCE_COMMAND_EVENT_DIR = new File("/tmp/sourceCommands");
+    public static final  File SOURCE_ENTITY_EVENT_DIR = new File("/tmp/sourceEntity");
 
     private final Properties commonConfig;
     private final KStreamsProcessorListener testListener;
@@ -132,6 +142,8 @@ public class SourceDaoImpl implements SourceDao, Managed {
     @Override
     public void insert(Source source) {
 
+        getSupportedSourceType(source);
+
         ProducerRecord<String, SourceCreateRequested> record = new ProducerRecord<>(SOURCE_COMMANDS_TOPIC, source.getSourceName(),
                 SourceCreateRequested.newBuilder()
                         .setHeader(Header.newBuilder().setTime(System.currentTimeMillis()).build())
@@ -144,6 +156,15 @@ public class SourceDaoImpl implements SourceDao, Managed {
             future.get();
         } catch (InterruptedException | ExecutionException e) {
             log.error("Error producing message", e);
+        }
+    }
+
+    private void getSupportedSourceType(Source source) {
+        boolean supportedSource = SOURCE_TYPES.stream()
+                .anyMatch(sourceType -> sourceType.equalsIgnoreCase(source.getSourceType()));
+
+        if (!supportedSource) {
+            throw new UnsupportedSourceTypeException(source.getSourceType());
         }
     }
 
@@ -285,6 +306,15 @@ public class SourceDaoImpl implements SourceDao, Managed {
 
     }
 
+    @Override
+    public List<Source> getAll() {
+        List<Source> sources = new ArrayList<>();
+        KeyValueIterator<String, com.homeaway.digitalplatform.streamregistry.Source> iterator =
+                sourceEntityStore.all();
+        iterator.forEachRemaining(keyValue -> sources.add(avroToModelSource(keyValue.value)));
+        return sources;
+    }
+
 
     private void initiateSourceEntityProcessor() {
         Properties sourceProcessorConfig = new Properties();
@@ -295,14 +325,12 @@ public class SourceDaoImpl implements SourceDao, Managed {
         sourceProcessorConfig.put(KafkaAvroSerializerConfig.VALUE_SUBJECT_NAME_STRATEGY, TopicRecordNameStrategy.class.getName());
         sourceProcessorConfig.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
         sourceProcessorConfig.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, KafkaAvroDeserializer.class.getName());
+        sourceProcessorConfig.put(StreamsConfig.STATE_DIR_CONFIG, SOURCE_ENTITY_EVENT_DIR.getPath());
 
         //TODO: Fix deprecated KStreamBuilder to using StreamsBuilder instead
         KStreamBuilder kStreamBuilder = new KStreamBuilder();
 
         kStreamBuilder.globalTable(SOURCE_ENTITY_TOPIC_NAME, SOURCE_ENTITY_STORE_NAME);
-
-
-        System.out.println("vinayak - " + sourceProcessorConfig);
 
         sourceEntityProcessor = new KafkaStreams(kStreamBuilder, sourceProcessorConfig);
 
@@ -334,8 +362,7 @@ public class SourceDaoImpl implements SourceDao, Managed {
         commandProcessorConfig.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
         commandProcessorConfig.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, KafkaAvroDeserializer.class.getName());
         commandProcessorConfig.put(StreamsConfig.APPLICATION_ID_CONFIG, SOURCE_COMMANDS_PROCESSOR_APP_ID);
-
-        System.out.println("vinayak " + commandProcessorConfig.toString());
+        commandProcessorConfig.put(StreamsConfig.STATE_DIR_CONFIG, SOURCE_COMMAND_EVENT_DIR.getPath());
 
         sourceCommandBuilder();
 

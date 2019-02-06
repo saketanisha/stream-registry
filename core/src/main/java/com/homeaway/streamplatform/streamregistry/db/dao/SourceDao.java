@@ -16,11 +16,13 @@
 package com.homeaway.streamplatform.streamregistry.db.dao;
 
 
+import java.util.List;
 import java.util.Optional;
 
 import io.dropwizard.lifecycle.Managed;
 
 import com.homeaway.streamplatform.streamregistry.exceptions.SourceNotFoundException;
+import com.homeaway.streamplatform.streamregistry.exceptions.UnsupportedSourceTypeException;
 import com.homeaway.streamplatform.streamregistry.model.Source;
 
 /**
@@ -28,9 +30,9 @@ import com.homeaway.streamplatform.streamregistry.model.Source;
  */
 public interface SourceDao extends Managed {
 
-    void insert(Source source);
+    void insert(Source source) throws UnsupportedSourceTypeException;
 
-    void update(Source source);
+    void update(Source source) throws SourceNotFoundException;
 
     Optional<Source> get(String sourceName);
 
@@ -45,5 +47,7 @@ public interface SourceDao extends Managed {
     String getStatus(String sourceName) throws SourceNotFoundException;
 
     void delete(String sourceName);
+
+    List<Source> getAll();
 
 }

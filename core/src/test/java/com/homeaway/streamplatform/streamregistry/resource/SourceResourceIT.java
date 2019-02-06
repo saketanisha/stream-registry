@@ -26,6 +26,7 @@ import java.util.concurrent.CompletableFuture;
 import io.confluent.kafka.serializers.AbstractKafkaAvroSerDeConfig;
 import io.confluent.kafka.streams.serdes.avro.SpecificAvroSerde;
 
+import org.apache.commons.io.FileUtils;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.streams.StreamsConfig;
@@ -39,15 +40,25 @@ import com.homeaway.streamplatform.streamregistry.model.Source;
 
 public class SourceResourceIT extends BaseResourceIT {
 
-    public static final int SOURCE_WAIT_TIME_MS = 5000;
+    // SourceImpl has a lot many processors.
+    // Takes longer for messages to show up in the consumer.
+    public static final int SOURCE_WAIT_TIME_MS = 4000;
 
 
     public static Properties commonConfig;
 
     private static SourceDao sourceDao;
 
+
+
     @BeforeClass
     public static void setUp() throws Exception {
+
+        // Make sure all temp dirs are cleaned first
+        // This will solve a lot of the dir locked issue etc.
+        FileUtils.deleteDirectory(SourceDaoImpl.SOURCE_COMMAND_EVENT_DIR);
+        FileUtils.deleteDirectory(SourceDaoImpl.SOURCE_ENTITY_EVENT_DIR);
+
         commonConfig = new Properties();
         commonConfig.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         commonConfig.put(AbstractKafkaAvroSerDeConfig.SCHEMA_REGISTRY_URL_CONFIG, schemaRegistryURL);

@@ -59,12 +59,14 @@ import com.homeaway.streamplatform.streamregistry.configuration.StreamValidatorC
 import com.homeaway.streamplatform.streamregistry.configuration.TopicsConfig;
 import com.homeaway.streamplatform.streamregistry.db.dao.KafkaManager;
 import com.homeaway.streamplatform.streamregistry.db.dao.RegionDao;
+import com.homeaway.streamplatform.streamregistry.db.dao.SourceDao;
 import com.homeaway.streamplatform.streamregistry.db.dao.StreamClientDao;
 import com.homeaway.streamplatform.streamregistry.db.dao.StreamDao;
 import com.homeaway.streamplatform.streamregistry.db.dao.impl.ConsumerDaoImpl;
 import com.homeaway.streamplatform.streamregistry.db.dao.impl.KafkaManagerImpl;
 import com.homeaway.streamplatform.streamregistry.db.dao.impl.ProducerDaoImpl;
 import com.homeaway.streamplatform.streamregistry.db.dao.impl.RegionDaoImpl;
+import com.homeaway.streamplatform.streamregistry.db.dao.impl.SourceDaoImpl;
 import com.homeaway.streamplatform.streamregistry.db.dao.impl.StreamDaoImpl;
 import com.homeaway.streamplatform.streamregistry.extensions.schema.SchemaManager;
 import com.homeaway.streamplatform.streamregistry.extensions.validation.StreamValidator;
@@ -73,9 +75,10 @@ import com.homeaway.streamplatform.streamregistry.model.Consumer;
 import com.homeaway.streamplatform.streamregistry.model.Producer;
 import com.homeaway.streamplatform.streamregistry.provider.InfraManager;
 import com.homeaway.streamplatform.streamregistry.resource.RegionResource;
+import com.homeaway.streamplatform.streamregistry.resource.SourceResource;
 import com.homeaway.streamplatform.streamregistry.resource.StreamResource;
-import com.homeaway.streamplatform.streamregistry.streams.GlobalKafkaStore;
 import com.homeaway.streamplatform.streamregistry.streams.ManagedInfraManager;
+import com.homeaway.streamplatform.streamregistry.streams.ManagedKStreams;
 import com.homeaway.streamplatform.streamregistry.streams.StreamRegistryProducer;
 
 /**
@@ -134,7 +137,7 @@ public class StreamRegistryApplication extends Application<StreamRegistryConfigu
         streamProperties.putAll(kstreamsProperties);
         streamProperties.put(StreamsConfig.STATE_DIR_CONFIG, "/tmp/streams/kafka-streams");
 
-        GlobalKafkaStore<AvroStreamKey, AvroStream> streamProcessor = new GlobalKafkaStore<>(streamProperties,
+        ManagedKStreams<AvroStreamKey, AvroStream> streamProcessor = new ManagedKStreams<>(streamProperties,
                 topicsConfig.getProducerTopic(), topicsConfig.getProducerStateStore(), null);
 
 
@@ -184,6 +187,13 @@ public class StreamRegistryApplication extends Application<StreamRegistryConfigu
         StreamResource streamResource = new StreamResource(streamDao, producerDao, consumerDao);
         environment.jersey().register(streamResource);
         environment.jersey().register(new RegionResource(regionDao));
+
+
+        SourceDao sourceDao = new SourceDaoImpl(streamProperties, null);
+        SourceResource sourceResource = new SourceResource(sourceDao);
+        environment.lifecycle().manage(sourceDao);
+        environment.jersey().register(sourceResource);
+
 
         environment.getApplicationContext().addServlet(PingServlet.class, "/ping");
         StreamRegistryHealthCheck streamRegistryHealthCheck = new StreamRegistryHealthCheck(streamProcessor, streamResource, metricRegistry);

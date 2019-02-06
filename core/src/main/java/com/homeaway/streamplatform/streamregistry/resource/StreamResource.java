@@ -260,9 +260,4 @@ public class StreamResource {
     public ConsumerResource getConsumerResource() {
         return new ConsumerResource(streamDao, consumerDao);
     }
-//
-//    @Path("/{stream}/sources")
-//    public SourceResource getSourceResource() {
-//        return new SourceResource(sourceDao);
-//    }
 }

@@ -28,7 +28,7 @@ import org.apache.kafka.streams.state.QueryableStoreTypes;
 import org.apache.kafka.streams.state.ReadOnlyKeyValueStore;
 
 @Slf4j
-public class GlobalKafkaStore<K, V> {
+public class ManagedKStreams<K, V> {
 
     @Getter
     private final KafkaStreams streams;
@@ -44,8 +44,8 @@ public class GlobalKafkaStore<K, V> {
 
     private boolean isRunning = false;
 
-    public GlobalKafkaStore(Properties streamProperties, String topicName, String stateStoreName,
-                            KStreamsProcessorListener testListener) {
+    public ManagedKStreams(Properties streamProperties, String topicName, String stateStoreName,
+                           KStreamsProcessorListener testListener) {
 
         this.streamProperties = streamProperties;
         this.stateStoreName = stateStoreName;

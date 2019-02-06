@@ -25,6 +25,7 @@ import java.util.List;
  */
 public class SourceType {
 
+    //TODO: Make this configurable or even be backed by a store eventually
     public static final List<String> SOURCE_TYPES = Arrays.asList("kinesis", "kafka");
 
 }

@@ -35,7 +35,7 @@ import io.swagger.annotations.ApiResponse;
 import io.swagger.annotations.ApiResponses;
 
 @Api(value = "Supported source types", description = "The source types supported by the stream registry")
-@Path("/")
+@Path("/v0/sourceTypes")
 @Produces(MediaType.APPLICATION_JSON)
 @Slf4j
 public class SourceTypeResource {

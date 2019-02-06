@@ -38,7 +38,6 @@ import io.confluent.kafka.schemaregistry.client.CachedSchemaRegistryClient;
 import io.confluent.kafka.schemaregistry.client.SchemaRegistryClient;
 import io.confluent.kafka.serializers.AbstractKafkaAvroSerDeConfig;
 import io.confluent.kafka.serializers.KafkaAvroSerializer;
-import io.confluent.kafka.streams.serdes.avro.SpecificAvroDeserializer;
 import io.dropwizard.configuration.YamlConfigurationFactory;
 import io.dropwizard.jackson.Jackson;
 import io.dropwizard.jersey.validation.Validators;
@@ -46,7 +45,6 @@ import io.dropwizard.jersey.validation.Validators;
 import org.I0Itec.zkclient.ZkClient;
 import org.I0Itec.zkclient.ZkConnection;
 import org.apache.commons.io.FileUtils;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.streams.StreamsConfig;
 import org.junit.AfterClass;
@@ -79,7 +77,7 @@ import com.homeaway.streamplatform.streamregistry.health.StreamRegistryHealthChe
 import com.homeaway.streamplatform.streamregistry.model.Consumer;
 import com.homeaway.streamplatform.streamregistry.model.Producer;
 import com.homeaway.streamplatform.streamregistry.provider.InfraManager;
-import com.homeaway.streamplatform.streamregistry.streams.GlobalKafkaStore;
+import com.homeaway.streamplatform.streamregistry.streams.ManagedKStreams;
 import com.homeaway.streamplatform.streamregistry.streams.StreamRegistryProducer;
 
 @SuppressWarnings("WeakerAccess")
@@ -124,21 +122,15 @@ public class BaseResourceIT {
 
     protected static StreamRegistryProducer streamProducer;
 
-    protected final static File streamsDirectory = new File("/tmp/streams");
-
-    protected final static File sourcesDirectory = new File("/tmp/sources");
+    protected final static File streamsDirectory = new File("/tmp/kafka-streams");
 
     protected static StreamRegistryProducer sourceProducer;
 
-    protected static GlobalKafkaStore streamProcessor;
-
-    protected static GlobalKafkaStore sourceProcessor;
+    protected static ManagedKStreams streamProcessor;
 
     protected static StreamResource streamResource;
 
     protected static ConsumerResource consumerResource;
-
-    protected static SourceResource sourceResource;
 
     protected static ProducerResource producerResource;
 
@@ -192,7 +184,6 @@ public class BaseResourceIT {
     public static void setupApplication() throws Exception {
 
         FileUtils.deleteDirectory(streamsDirectory);
-        FileUtils.deleteDirectory(sourcesDirectory);
 
         // static test config setup during pre-integration-test mvn phase
         zookeeperQuorum = "127.0.0.1:21810";
@@ -238,25 +229,8 @@ public class BaseResourceIT {
         streamProperties.putAll(streamsConfig);
         streamProperties.put(StreamsConfig.STATE_DIR_CONFIG, streamsDirectory.getPath());
 
-        streamProcessor = new GlobalKafkaStore<>(streamProperties, BaseResourceIT.topicsConfig.getProducerTopic(),
+        streamProcessor = new ManagedKStreams<>(streamProperties, BaseResourceIT.topicsConfig.getProducerTopic(),
                 topicsConfig.getProducerStateStore(), () -> initialized.complete(true));
-
-
-        Properties sourceProperties = new Properties();
-        sourceProperties.putAll(streamsConfig);
-        sourceProperties.put("application.id", "source-kstreams-application.id");
-        sourceProperties.put(StreamsConfig.STATE_DIR_CONFIG, sourcesDirectory.getPath());
-
-        sourceProcessor = new GlobalKafkaStore<>(sourceProperties, BaseResourceIT.topicsConfig.getStreamSourceTopic(),
-                topicsConfig.getStreamSourceStateStore(), () -> initialized.complete(true));
-
-        consumerConfig = new Properties();
-        consumerConfig.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        consumerConfig.put(ConsumerConfig.GROUP_ID_CONFIG, "schemaregistry-test-consumer");
-        consumerConfig.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-        consumerConfig.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, SpecificAvroDeserializer.class);
-        consumerConfig.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, SpecificAvroDeserializer.class);
-        consumerConfig.put(AbstractKafkaAvroSerDeConfig.SCHEMA_REGISTRY_URL_CONFIG, schemaRegistryURL);
 
         log.info(
             "sleep started. Sleep needed so that the processor's init method is called (KV store created) before servicing the HTTP requests.");
@@ -378,16 +352,11 @@ public class BaseResourceIT {
     public static void tearDown() throws Exception {
         streamProcessor.stop();
         streamProcessor.getStreams().cleanUp();
-        sourceProcessor.stop();
         streamProcessor.getStreams().cleanUp();
         streamProducer.stop();
         sourceProducer.stop();
         infraManager.stop();
         ZKCLIENT.close();
-
         FileUtils.deleteDirectory(streamsDirectory);
-        FileUtils.deleteDirectory(sourcesDirectory);
-
-
     }
 }
