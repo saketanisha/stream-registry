@@ -46,7 +46,7 @@ import com.homeaway.streamplatform.streamregistry.model.Stream;
 import com.homeaway.streamplatform.streamregistry.model.Tags;
 import com.homeaway.streamplatform.streamregistry.provider.InfraManager;
 import com.homeaway.streamplatform.streamregistry.streams.ManagedKStreams;
-import com.homeaway.streamplatform.streamregistry.streams.StreamProducer;
+import com.homeaway.streamplatform.streamregistry.streams.ManagedKafkaProducer;
 
 @Slf4j
 public class StreamDaoImpl extends AbstractDao implements StreamDao, StreamValidator {
@@ -54,7 +54,7 @@ public class StreamDaoImpl extends AbstractDao implements StreamDao, StreamValid
     private StreamValidator streamValidator;
     private SchemaManager schemaManager;
 
-    public StreamDaoImpl(StreamProducer streamProducer,
+    public StreamDaoImpl(ManagedKafkaProducer managedKafkaProducer,
                          ManagedKStreams kStreams,
                          String env,
                          RegionDao regionDao,
@@ -62,7 +62,7 @@ public class StreamDaoImpl extends AbstractDao implements StreamDao, StreamValid
                          KafkaManager kafkaManager,
                          StreamValidator validator,
                          SchemaManager schemaManager) {
-        super(streamProducer, kStreams, env, regionDao, infraManager, kafkaManager);
+        super(managedKafkaProducer, kStreams, env, regionDao, infraManager, kafkaManager);
         this.streamValidator = validator;
         this.schemaManager = schemaManager;
     }

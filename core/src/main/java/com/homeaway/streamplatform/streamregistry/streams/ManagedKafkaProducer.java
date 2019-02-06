@@ -15,7 +15,7 @@
  */
 package com.homeaway.streamplatform.streamregistry.streams;
 
-public interface StreamProducer<K,V> {
+public interface ManagedKafkaProducer<K,V> {
 
     void log(K key, V value);
 

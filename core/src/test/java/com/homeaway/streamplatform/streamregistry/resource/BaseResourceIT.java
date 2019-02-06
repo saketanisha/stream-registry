@@ -78,7 +78,7 @@ import com.homeaway.streamplatform.streamregistry.model.Consumer;
 import com.homeaway.streamplatform.streamregistry.model.Producer;
 import com.homeaway.streamplatform.streamregistry.provider.InfraManager;
 import com.homeaway.streamplatform.streamregistry.streams.ManagedKStreams;
-import com.homeaway.streamplatform.streamregistry.streams.StreamRegistryProducer;
+import com.homeaway.streamplatform.streamregistry.streams.ManagedKafkaRegistryProducer;
 
 @SuppressWarnings("WeakerAccess")
 @Slf4j
@@ -120,11 +120,11 @@ public class BaseResourceIT {
     // THIS IS A TEMPORARY WORKAROUND for now... centralizing here so that we can soon remove it
     protected static final int TEST_SLEEP_WAIT_MS = 80;
 
-    protected static StreamRegistryProducer streamProducer;
+    protected static ManagedKafkaRegistryProducer streamProducer;
 
     protected final static File streamsDirectory = new File("/tmp/kafka-streams");
 
-    protected static StreamRegistryProducer sourceProducer;
+    protected static ManagedKafkaRegistryProducer sourceProducer;
 
     protected static ManagedKStreams streamProcessor;
 
@@ -212,8 +212,8 @@ public class BaseResourceIT {
         producerConfig.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, KafkaAvroSerializer.class);
         producerConfig.put(AbstractKafkaAvroSerDeConfig.SCHEMA_REGISTRY_URL_CONFIG, schemaRegistryURL);
         
-        streamProducer = new StreamRegistryProducer<>(producerConfig, BaseResourceIT.topicsConfig.getProducerTopic());
-        sourceProducer = new StreamRegistryProducer<>(producerConfig, BaseResourceIT.topicsConfig.getStreamSourceTopic());
+        streamProducer = new ManagedKafkaRegistryProducer<>(producerConfig, BaseResourceIT.topicsConfig.getProducerTopic());
+        sourceProducer = new ManagedKafkaRegistryProducer<>(producerConfig, BaseResourceIT.topicsConfig.getStreamSourceTopic());
 
         streamsConfig = new Properties();
         KafkaStreamsConfig kafkaStreamsConfig = configuration.getKafkaStreamsConfig();

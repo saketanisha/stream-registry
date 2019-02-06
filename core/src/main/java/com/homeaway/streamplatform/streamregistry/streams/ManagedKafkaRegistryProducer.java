@@ -26,12 +26,12 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 
 @Slf4j
-public class StreamRegistryProducer<K, V> implements StreamProducer<K, V> {
+public class ManagedKafkaRegistryProducer<K, V> implements ManagedKafkaProducer<K, V> {
 
     private final String topicName;
     private Producer<K, V> producer;
 
-    public StreamRegistryProducer(Properties properties, String topicName) {
+    public ManagedKafkaRegistryProducer(Properties properties, String topicName) {
         this.topicName = topicName;
         producer = new KafkaProducer<>(properties);
         log.info("Managed Kafka Producer Started with properties: " + properties);

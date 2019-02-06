@@ -79,7 +79,7 @@ import com.homeaway.streamplatform.streamregistry.resource.SourceResource;
 import com.homeaway.streamplatform.streamregistry.resource.StreamResource;
 import com.homeaway.streamplatform.streamregistry.streams.ManagedInfraManager;
 import com.homeaway.streamplatform.streamregistry.streams.ManagedKStreams;
-import com.homeaway.streamplatform.streamregistry.streams.StreamRegistryProducer;
+import com.homeaway.streamplatform.streamregistry.streams.ManagedKafkaRegistryProducer;
 
 /**
  * This is the main DropWizard application that bootstraps DropWizard, wires up the app,
@@ -131,7 +131,7 @@ public class StreamRegistryApplication extends Application<StreamRegistryConfigu
         kstreamsProperties.put(ROCKSDB_CONFIG_SETTER_CLASS_CONFIG, CustomRocksDBConfig.class);
         TopicsConfig topicsConfig = configuration.getTopicsConfig();
 
-        StreamRegistryProducer<AvroStreamKey, AvroStream> streamProducer = new StreamRegistryProducer<>(producerProperties, topicsConfig.getProducerTopic());
+        ManagedKafkaRegistryProducer<AvroStreamKey, AvroStream> streamProducer = new ManagedKafkaRegistryProducer<>(producerProperties, topicsConfig.getProducerTopic());
 
         Properties streamProperties = new Properties();
         streamProperties.putAll(kstreamsProperties);
