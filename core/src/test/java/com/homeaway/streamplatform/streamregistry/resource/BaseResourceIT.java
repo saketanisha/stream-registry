@@ -65,14 +65,12 @@ import com.homeaway.streamplatform.streamregistry.configuration.TopicsConfig;
 import com.homeaway.streamplatform.streamregistry.db.dao.AbstractDao;
 import com.homeaway.streamplatform.streamregistry.db.dao.KafkaManager;
 import com.homeaway.streamplatform.streamregistry.db.dao.RegionDao;
-import com.homeaway.streamplatform.streamregistry.db.dao.SourceDao;
 import com.homeaway.streamplatform.streamregistry.db.dao.StreamClientDao;
 import com.homeaway.streamplatform.streamregistry.db.dao.StreamDao;
 import com.homeaway.streamplatform.streamregistry.db.dao.impl.ConsumerDaoImpl;
 import com.homeaway.streamplatform.streamregistry.db.dao.impl.KafkaManagerImpl;
 import com.homeaway.streamplatform.streamregistry.db.dao.impl.ProducerDaoImpl;
 import com.homeaway.streamplatform.streamregistry.db.dao.impl.RegionDaoImpl;
-import com.homeaway.streamplatform.streamregistry.db.dao.impl.SourceDaoImpl;
 import com.homeaway.streamplatform.streamregistry.db.dao.impl.StreamDaoImpl;
 import com.homeaway.streamplatform.streamregistry.extensions.schema.SchemaManager;
 import com.homeaway.streamplatform.streamregistry.extensions.validation.StreamValidator;
@@ -211,7 +209,7 @@ public class BaseResourceIT {
             createTopic(producerTopic, 1, 1, new Properties());
             createTopic(streamSourceTopic, 1, 1, new Properties());
         } catch (Exception exception) {
-            throw new IllegalStateException("Could not create topic " + producerTopic, exception);
+            throw new IllegalStateException("Could not insert topic " + producerTopic, exception);
         }
 
         infraManager = buildInfraManager();
@@ -288,12 +286,10 @@ public class BaseResourceIT {
             infraManager, kafkaManager);
         StreamClientDao<Consumer> consumerDao = new ConsumerDaoImpl(streamProducer, streamProcessor, env, regionDao,
             infraManager, kafkaManager);
-        SourceDao sourceDao = new SourceDaoImpl(sourceProducer, sourceProcessor);
 
-        streamResource = new StreamResource(streamDao, producerDao, consumerDao, sourceDao);
+        streamResource = new StreamResource(streamDao, producerDao, consumerDao);
         producerResource = new ProducerResource(streamDao, producerDao);
         consumerResource = new ConsumerResource(streamDao, consumerDao);
-        sourceResource = new SourceResource(sourceDao);
 
         SchemaRegistryClient schemaRegistryClient = new CachedSchemaRegistryClient(schemaRegistryURL, 1);
         schemaRegistryClient.register(producerTopic + "-key", AvroStreamKey.SCHEMA$);

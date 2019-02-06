@@ -43,7 +43,6 @@ import io.swagger.annotations.ApiResponses;
 
 import org.apache.avro.SchemaParseException;
 
-import com.homeaway.streamplatform.streamregistry.db.dao.SourceDao;
 import com.homeaway.streamplatform.streamregistry.db.dao.StreamClientDao;
 import com.homeaway.streamplatform.streamregistry.db.dao.StreamDao;
 import com.homeaway.streamplatform.streamregistry.exceptions.StreamNotFoundException;
@@ -68,16 +67,13 @@ public class StreamResource {
     private final StreamDao streamDao;
     private final StreamClientDao<Producer> producerDao;
     private final StreamClientDao<Consumer> consumerDao;
-    private final SourceDao sourceDao;
 
     public StreamResource(StreamDao streamDao,
                           StreamClientDao<Producer> producerDao,
-                          StreamClientDao<Consumer> consumerDao,
-                          SourceDao sourceDao) {
+                          StreamClientDao<Consumer> consumerDao) {
         this.streamDao = streamDao;
         this.producerDao = producerDao;
         this.consumerDao = consumerDao;
-        this.sourceDao = sourceDao;
     }
 
     @PUT
@@ -264,14 +260,9 @@ public class StreamResource {
     public ConsumerResource getConsumerResource() {
         return new ConsumerResource(streamDao, consumerDao);
     }
-
-    @Path("/{streamName}/sources")
-    public SourceResource getSourceResource() {
-        return new SourceResource(sourceDao);
-    }
-
-    @Path("/sourcetypes")
-    public SourceTypeResource getSourceTypeResource() {
-        return new SourceTypeResource();
-    }
+//
+//    @Path("/{stream}/sources")
+//    public SourceResource getSourceResource() {
+//        return new SourceResource(sourceDao);
+//    }
 }

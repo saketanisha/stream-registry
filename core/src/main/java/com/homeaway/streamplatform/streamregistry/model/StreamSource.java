@@ -23,7 +23,7 @@ import javax.validation.constraints.NotNull;
 /**
  * StreamSource is a CDC (Change Data Capture) producer
  * It defines the basic information needed to successfully interact with a
- * Source database/Stream to create a change data capture stream
+ * Source database/Stream to insert a change data capture stream
  * The *imperative* SourceManager is responsible for authenticating this source.
  */
 public class StreamSource {

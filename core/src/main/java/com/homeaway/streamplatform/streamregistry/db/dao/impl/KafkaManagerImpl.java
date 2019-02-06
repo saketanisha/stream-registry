@@ -86,14 +86,14 @@ public class KafkaManagerImpl implements KafkaManager {
             // partition the list by whether the topic exists or not
             Map<Boolean, List<String>> partitionMaps = topics.stream().collect(Collectors.partitioningBy(topic -> topicExists(zkUtils, topic)));
 
-            // if it exists, update it.  If it doesn't exist, create it
+            // if it exists, update it.  If it doesn't exist, insert it
             List<String> topicsToUpdate = partitionMaps.get(true);
             List<String> topicsToCreate = partitionMaps.get(false);
 
             // update any topics that are necessary
             updateTopics(zkUtils, topicsToUpdate, topicConfigMap, isNewStream);
 
-            // now create any topics that were necessary to create this run
+            // now insert any topics that were necessary to insert this run
             createTopics(zkUtils, topicsToCreate, partitions, replicationFactor, topicConfigMap);
         } finally {
             shutdownZkUtils(zkUtils);
@@ -141,7 +141,7 @@ public class KafkaManagerImpl implements KafkaManager {
         AdminUtils.changeTopicConfig(zkUtils, topic, topicProperties);
     }
 
-    // TODO need to check if topic exists instead of relying on exception path or just create one since check already occurred above
+    // TODO need to check if topic exists instead of relying on exception path or just insert one since check already occurred above
     // TODO Timeout exception needs to propagate and not be handled here
     // TODO Need JavaDoc
     // package scope so that PowerMock can verify

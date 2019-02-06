@@ -15,210 +15,466 @@
  */
 package com.homeaway.streamplatform.streamregistry.db.dao.impl;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
+import java.util.Properties;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 
-import javax.validation.constraints.NotNull;
-
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
-import com.homeaway.digitalplatform.streamregistry.AvroStreamKey;
-import com.homeaway.digitalplatform.streamregistry.Sources;
+import io.confluent.kafka.serializers.KafkaAvroDeserializer;
+import io.confluent.kafka.serializers.KafkaAvroSerializer;
+import io.confluent.kafka.serializers.KafkaAvroSerializerConfig;
+import io.confluent.kafka.serializers.subject.TopicRecordNameStrategy;
+import io.dropwizard.lifecycle.Managed;
+
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.kafka.common.serialization.StringDeserializer;
+import org.apache.kafka.common.serialization.StringSerializer;
+import org.apache.kafka.streams.KafkaStreams;
+import org.apache.kafka.streams.KeyValue;
+import org.apache.kafka.streams.StreamsBuilder;
+import org.apache.kafka.streams.StreamsConfig;
+import org.apache.kafka.streams.kstream.KStreamBuilder;
+import org.apache.kafka.streams.state.QueryableStoreTypes;
+import org.apache.kafka.streams.state.ReadOnlyKeyValueStore;
+
+import com.homeaway.digitalplatform.streamregistry.Header;
+import com.homeaway.digitalplatform.streamregistry.SourceCreateRequested;
+import com.homeaway.digitalplatform.streamregistry.SourcePauseRequested;
+import com.homeaway.digitalplatform.streamregistry.SourceResumeRequested;
+import com.homeaway.digitalplatform.streamregistry.SourceStartRequested;
+import com.homeaway.digitalplatform.streamregistry.SourceStopRequested;
+import com.homeaway.digitalplatform.streamregistry.SourceUpdateRequested;
 import com.homeaway.streamplatform.streamregistry.db.dao.SourceDao;
 import com.homeaway.streamplatform.streamregistry.exceptions.SourceNotFoundException;
 import com.homeaway.streamplatform.streamregistry.model.Source;
-import com.homeaway.streamplatform.streamregistry.streams.GlobalKafkaStore;
-import com.homeaway.streamplatform.streamregistry.streams.StreamProducer;
+import com.homeaway.streamplatform.streamregistry.streams.KStreamsProcessorListener;
 
 
+/**
+ * KStreams event processor implementation of the SourceDao
+ * All calls to this Dao represent asynchronous/eventually consistent actions.
+ */
 @Slf4j
-public class SourceDaoImpl implements SourceDao {
+public class SourceDaoImpl implements SourceDao, Managed {
 
-    @NotNull
-    private StreamProducer<AvroStreamKey, com.homeaway.digitalplatform.streamregistry.Sources> kafkaProducer;
 
-    @NotNull
-    private final GlobalKafkaStore<AvroStreamKey, Sources> kstreams;
+    /**
+     * Source entity store name
+     */
+    public static final String SOURCE_ENTITY_STORE_NAME = "source-entity-store-v1";
 
-    public SourceDaoImpl(StreamProducer<AvroStreamKey, com.homeaway.digitalplatform.streamregistry.Sources> kafkaProducer,
-                         GlobalKafkaStore<AvroStreamKey, Sources> kstreams) {
-        this.kafkaProducer = kafkaProducer;
-        this.kstreams = kstreams;
+    /**
+     * The constant SOURCE_ENTITY_TOPIC_NAME.
+     */
+    public static final String SOURCE_ENTITY_TOPIC_NAME = "source-entity-v1";
+
+    /**
+     * Application id for the Source entity processor
+     */
+    public static final String SOURCE_ENTITY_PROCESSOR_APP_ID = "source-entity-processor-v1";
+
+    /**
+     * The constant PRODUCER_TOPIC_NAME.
+     */
+    public static final String SOURCE_COMMANDS_TOPIC = "source-command-events-v1";
+
+    public static final String SOURCE_COMMANDS_PROCESSOR_APP_ID = "source-commands-processor-v1";
+
+    private final Properties commonConfig;
+    private final KStreamsProcessorListener testListener;
+    private boolean isRunning = false;
+    private KafkaStreams sourceEntityProcessor;
+    private KafkaStreams sourceCommandProcessor;
+    KafkaProducer<String, SourceCreateRequested> createRequestProducer;
+    KafkaProducer<String, SourceUpdateRequested> updateRequestProducer;
+    KafkaProducer<String, SourceStartRequested> startRequestProducer;
+    KafkaProducer<String, SourcePauseRequested> pauseRequestProducer;
+    KafkaProducer<String, SourceStopRequested> stopRequestProducer;
+    KafkaProducer<String, SourceResumeRequested> resumeRequestProducer;
+    KafkaProducer<String, Source> deleteProducer;
+
+    @Getter
+    private ReadOnlyKeyValueStore<String, com.homeaway.digitalplatform.streamregistry.Source> sourceEntityStore;
+
+    /**
+     * Instantiates a new Source dao.
+     *
+     * @param commonConfig the common config
+     * @param testListener the test listener
+     */
+    public SourceDaoImpl(Properties commonConfig, KStreamsProcessorListener testListener) {
+
+        this.commonConfig = commonConfig;
+        this.testListener = testListener;
+
+        Properties commandProcessorConfig = new Properties();
+        commonConfig.forEach(commandProcessorConfig::put);
+        commandProcessorConfig.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+        commandProcessorConfig.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, KafkaAvroSerializer.class.getName());
+        commandProcessorConfig.put(KafkaAvroSerializerConfig.VALUE_SUBJECT_NAME_STRATEGY, TopicRecordNameStrategy.class.getName());
+        createRequestProducer = new KafkaProducer<>(commandProcessorConfig);
+        updateRequestProducer = new KafkaProducer<>(commandProcessorConfig);
+        startRequestProducer = new KafkaProducer<>(commandProcessorConfig);
+        pauseRequestProducer = new KafkaProducer<>(commandProcessorConfig);
+        stopRequestProducer = new KafkaProducer<>(commandProcessorConfig);
+        resumeRequestProducer = new KafkaProducer<>(commandProcessorConfig);
+        deleteProducer = new KafkaProducer(commandProcessorConfig);
+
     }
 
     @Override
-    public void upsert(Source givenSource) {
+    public void insert(Source source) {
 
+        ProducerRecord<String, SourceCreateRequested> record = new ProducerRecord<>(SOURCE_COMMANDS_TOPIC, source.getSourceName(),
+                SourceCreateRequested.newBuilder()
+                        .setHeader(Header.newBuilder().setTime(System.currentTimeMillis()).build())
+                        .setSourceName(source.getSourceName())
+                        .setSource(modelToAvroSource(source, Status.NOT_RUNNING))
+                        .build());
+        Future<RecordMetadata> future = createRequestProducer.send(record);
+        // Wait for the message synchronously
+        try {
+            future.get();
+        } catch (InterruptedException | ExecutionException e) {
+            log.error("Error producing message", e);
+        }
+    }
 
-        AvroStreamKey avroStreamKey = getAvroKeyFromString(
-                givenSource.getStreamName());
+    @Override
+    public void update(Source source) {
 
-        Optional<Sources> avroSources = kstreams.getAvroStreamForKey(avroStreamKey);
+        ProducerRecord<String, SourceUpdateRequested> record = new ProducerRecord<>(SOURCE_COMMANDS_TOPIC, source.getSourceName(),
+                SourceUpdateRequested.newBuilder()
+                        .setHeader(Header.newBuilder().setTime(System.currentTimeMillis()).build())
+                        .setSourceName(source.getSourceName())
+                        .setSource(modelToAvroSource(source, Status.NOT_RUNNING))
+                        .build());
+        Future<RecordMetadata> future = updateRequestProducer.send(record);
+        // Wait for the message synchronously
+        try {
+            future.get();
+        } catch (InterruptedException | ExecutionException e) {
+            log.error("Error producing message", e);
+        }
+    }
 
-        if (avroSources.isPresent()) {
-            // stream exists, sources exist
+    @Override
+    public Optional<Source> get(String sourceName) {
+        return Optional.ofNullable(avroToModelSource(sourceEntityStore.get(sourceName)));
+    }
 
-            Optional<com.homeaway.digitalplatform.streamregistry.Source> avroSourceOptional = avroSources
-                    .get()
-                    .getSources()
-                    .stream()
-                    .filter((sourceAvro) -> sourceAvro.getSourceName()
-                            .equalsIgnoreCase(givenSource.getSourceName()))
-                    .findAny();
+    @Override
+    public void start(String sourceName) throws SourceNotFoundException {
 
-            if (avroSourceOptional.isPresent()) {
-                // update source in source list for an existing stream
-                com.homeaway.digitalplatform.streamregistry.Source updatedAvroSource = getUpdatedAvroSource(givenSource);
-
-                List<com.homeaway.digitalplatform.streamregistry.Source> avroSourcesWithoutTargetItem = avroSources
-                        .get()
-                        .getSources()
-                        .stream()
-                        .filter((sourceAvro) -> !sourceAvro.getSourceName()
-                                .equalsIgnoreCase(givenSource.getSourceName())).
-                                collect(Collectors.toList());
-                avroSourcesWithoutTargetItem.add(updatedAvroSource);
-
-                Sources updateAvroSources = getAvroSourcesFromJsonList(updatedAvroSource, avroSourcesWithoutTargetItem);
-                kafkaProducer.log(avroStreamKey, updateAvroSources);
-            } else {
-                // add to sources list for an existing stream
-                com.homeaway.digitalplatform.streamregistry.Source updatedAvroSource = getUpdatedAvroSource(givenSource);
-
-                List<com.homeaway.digitalplatform.streamregistry.Source> avroSourcesList = new ArrayList<>(avroSources.get().getSources());
-
-                avroSourcesList.add(updatedAvroSource);
-
-                Sources updateAvroSources = getAvroSourcesFromJsonList(updatedAvroSource, avroSourcesList);
-
-                kafkaProducer.log(avroStreamKey, updateAvroSources);
+        Optional<Source> source = get(sourceName);
+        if (source.isPresent()) {
+            ProducerRecord<String, SourceStartRequested> record = new ProducerRecord<>(SOURCE_COMMANDS_TOPIC, source.get().getSourceName(),
+                    SourceStartRequested.newBuilder()
+                            .setHeader(Header.newBuilder().setTime(System.currentTimeMillis()).build())
+                            .setSourceName(source.get().getSourceName())
+                            .setSource(modelToAvroSource(source.get(), Status.NOT_RUNNING))
+                            .build());
+            Future<RecordMetadata> future = startRequestProducer.send(record);
+            // Wait for the message synchronously
+            try {
+                future.get();
+            } catch (InterruptedException | ExecutionException e) {
+                log.error("Error producing message", e);
             }
         } else {
-            // create a new source for new stream
-
-            List<com.homeaway.digitalplatform.streamregistry.Source> tempList = new ArrayList<>();
-            com.homeaway.digitalplatform.streamregistry.Source newAvroSource =
-                    com.homeaway.digitalplatform.streamregistry.Source.newBuilder()
-                            .setStreamName(givenSource.getStreamName())
-                            .setSourceName(givenSource.getSourceName())
-                            .setSourceType(givenSource.getSourceType())
-                            .setStreamSourceConfiguration(givenSource.getStreamSourceConfiguration())
-                            .build();
-
-            tempList.add(newAvroSource);
-            Sources sources = getAvroSourcesFromJsonList(newAvroSource, tempList);
-            kafkaProducer.log(avroStreamKey, sources);
+            throw new SourceNotFoundException(sourceName);
         }
-
-
     }
 
     @Override
-    public Optional<Source> get(String streamName, String sourceName) {
+    public void pause(String sourceName) throws SourceNotFoundException {
 
-        AvroStreamKey avroKey = getAvroKeyFromString(streamName);
-
-        Optional<Sources> sources = kstreams.getAvroStreamForKey(avroKey);
-
-        if (sources.isPresent()) {
-            return sources
-                    .get()
-                    .getSources()
-                    .stream()
-                    .filter(stream -> stream.getSourceName().equalsIgnoreCase(sourceName))
-                    .findAny()
-                    .map(this::getModelSourceFromAvroSource);
-        }
-        return Optional.empty();
-    }
-
-
-    @Override
-    public void delete(String streamName, String sourceName) {
-        AvroStreamKey stream = getAvroKeyFromString(streamName);
-
-        Optional<com.homeaway.digitalplatform.streamregistry.Sources> avroSources =
-                kstreams.getAvroStreamForKey(stream);
-
-        boolean sourceNameMatch = false;
-
-        if (avroSources.isPresent()) {
-            sourceNameMatch = avroSources.get()
-                    .getSources()
-                    .stream()
-                    .anyMatch(source -> source.getSourceName().equalsIgnoreCase(sourceName));
-        }
-
-        if (sourceNameMatch) {
-            // create a list without givenSource and update the list in the producerStateStore
-            List<com.homeaway.digitalplatform.streamregistry.Source> updatedSourcesWithoutGivenSource = avroSources.get()
-                    .getSources()
-                    .stream()
-                    .filter(source -> !source.getSourceName().equalsIgnoreCase(sourceName))
-                    .collect(Collectors.toList());
-
-            avroSources.get().setSources(updatedSourcesWithoutGivenSource);
-
-            kafkaProducer.log(stream, avroSources.get());
+        Optional<Source> source = get(sourceName);
+        if (source.isPresent()) {
+            ProducerRecord<String, SourcePauseRequested> record = new ProducerRecord<>(SOURCE_COMMANDS_TOPIC, source.get().getSourceName(),
+                    SourcePauseRequested.newBuilder()
+                            .setHeader(Header.newBuilder().setTime(System.currentTimeMillis()).build())
+                            .setSourceName(source.get().getSourceName())
+                            .setSource(modelToAvroSource(source.get(), Status.NOT_RUNNING))
+                            .build());
+            Future<RecordMetadata> future = pauseRequestProducer.send(record);
+            // Wait for the message synchronously
+            try {
+                future.get();
+            } catch (InterruptedException | ExecutionException e) {
+                log.error("Error producing message", e);
+            }
         } else {
-            // can't delete what you don't have
             throw new SourceNotFoundException(sourceName);
         }
 
     }
 
     @Override
-    public List<Source> getAll(String streamName) {
+    public void resume(String sourceName) throws SourceNotFoundException {
+        Optional<Source> source = get(sourceName);
+        if (source.isPresent()) {
+            ProducerRecord<String, SourceResumeRequested> record = new ProducerRecord<>(SOURCE_COMMANDS_TOPIC, source.get().getSourceName(),
+                    SourceResumeRequested.newBuilder()
+                            .setHeader(Header.newBuilder().setTime(System.currentTimeMillis()).build())
+                            .setSourceName(source.get().getSourceName())
+                            .setSource(modelToAvroSource(source.get(), Status.NOT_RUNNING))
+                            .build());
+            Future<RecordMetadata> future = resumeRequestProducer.send(record);
+            // Wait for the message synchronously
+            try {
+                future.get();
+            } catch (InterruptedException | ExecutionException e) {
+                log.error("Error producing message", e);
+            }
+        } else {
+            throw new SourceNotFoundException(sourceName);
+        }
+    }
 
-        AvroStreamKey avroStreamKey = getAvroKeyFromString(streamName);
+    @Override
+    public void stop(String sourceName) throws SourceNotFoundException {
+        Optional<Source> source = get(sourceName);
+        if (source.isPresent()) {
+            ProducerRecord<String, SourceStopRequested> record = new ProducerRecord<>(SOURCE_COMMANDS_TOPIC, source.get().getSourceName(),
+                    SourceStopRequested.newBuilder()
+                            .setHeader(Header.newBuilder().setTime(System.currentTimeMillis()).build())
+                            .setSourceName(source.get().getSourceName())
+                            .setSource(modelToAvroSource(source.get(), Status.NOT_RUNNING))
+                            .build());
+            Future<RecordMetadata> future = stopRequestProducer.send(record);
+            // Wait for the message synchronously
+            try {
+                future.get();
+            } catch (InterruptedException | ExecutionException e) {
+                log.error("Error producing message", e);
+            }
+        } else {
+            throw new SourceNotFoundException(sourceName);
+        }
+    }
 
-        Optional<Sources> sources =
-                kstreams.getAvroStreamForKey(avroStreamKey);
+    @Override
+    public String getStatus(String sourceName) {
+        Optional<com.homeaway.digitalplatform.streamregistry.Source> source =
+                Optional.ofNullable(sourceEntityStore.get(sourceName));
 
-        return sources.map(sourceList -> sourceList.getSources()
-                .stream()
-                .map(this::getModelSourceFromAvroSource)
-                .collect(Collectors.toList()))
-                .orElse(Collections.emptyList());
+        if (!source.isPresent()) {
+            throw new SourceNotFoundException(sourceName);
+        }
+        return source.get().getStatus();
+    }
+
+    @Override
+    public void delete(String sourceName) {
+        ProducerRecord<String, Source> record = new ProducerRecord<>(SOURCE_ENTITY_TOPIC_NAME, sourceName, null);
+        Future<RecordMetadata> future = deleteProducer.send(record);
+        // Wait for the message synchronously
+        try {
+            future.get();
+        } catch (InterruptedException | ExecutionException e) {
+            log.error("Error producing message", e);
+        }
+
     }
 
 
-    private Sources getAvroSourcesFromJsonList(com.homeaway.digitalplatform.streamregistry.Source updatedAvroSource,
-                                               List<com.homeaway.digitalplatform.streamregistry.Source> avroSourcesWithoutTargetItem) {
-        return Sources
-                .newBuilder()
-                .setStreamName(updatedAvroSource.getStreamName())
-                .setSources(avroSourcesWithoutTargetItem)
-                .build();
+    private void initiateSourceEntityProcessor() {
+        Properties sourceProcessorConfig = new Properties();
+        commonConfig.forEach(sourceProcessorConfig::put);
+        sourceProcessorConfig.put(StreamsConfig.APPLICATION_ID_CONFIG, SOURCE_ENTITY_PROCESSOR_APP_ID);
+        sourceProcessorConfig.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+        sourceProcessorConfig.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, KafkaAvroSerializer.class.getName());
+        sourceProcessorConfig.put(KafkaAvroSerializerConfig.VALUE_SUBJECT_NAME_STRATEGY, TopicRecordNameStrategy.class.getName());
+        sourceProcessorConfig.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+        sourceProcessorConfig.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, KafkaAvroDeserializer.class.getName());
+
+        //TODO: Fix deprecated KStreamBuilder to using StreamsBuilder instead
+        KStreamBuilder kStreamBuilder = new KStreamBuilder();
+
+        kStreamBuilder.globalTable(SOURCE_ENTITY_TOPIC_NAME, SOURCE_ENTITY_STORE_NAME);
+
+
+        System.out.println("vinayak - " + sourceProcessorConfig);
+
+        sourceEntityProcessor = new KafkaStreams(kStreamBuilder, sourceProcessorConfig);
+
+        sourceEntityProcessor.setStateListener((newState, oldState) -> {
+            if (!isRunning && newState == KafkaStreams.State.RUNNING) {
+                isRunning = true;
+                if (testListener != null) {
+                    testListener.stateStoreInitialized();
+                }
+            }
+        });
+
+        sourceEntityProcessor.setUncaughtExceptionHandler((t, e) -> log.error("Source entity processor job failed", e));
+        sourceEntityProcessor.start();
+        log.info("Source entity processor started.");
+        log.info("Source entity state Store Name: {}", SOURCE_ENTITY_STORE_NAME);
+        sourceEntityStore = sourceEntityProcessor.store(SOURCE_ENTITY_STORE_NAME, QueryableStoreTypes.keyValueStore());
     }
 
-    private com.homeaway.digitalplatform.streamregistry.Source getUpdatedAvroSource(Source givenSource) {
-        return com.homeaway.digitalplatform.streamregistry.Source.newBuilder()
-                .setStreamName(givenSource.getStreamName())
-                .setSourceName(givenSource.getSourceName())
-                .setSourceType(givenSource.getSourceType())
-                .setStreamSourceConfiguration(givenSource.getStreamSourceConfiguration())
-                .build();
+    private void initiateSourceCommandProcessor() {
+
+        // Pure commands, doesn't need a state store
+
+        Properties commandProcessorConfig = new Properties();
+        commonConfig.forEach(commandProcessorConfig::put);
+        commandProcessorConfig.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+        commandProcessorConfig.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, KafkaAvroSerializer.class.getName());
+        commandProcessorConfig.put(KafkaAvroSerializerConfig.VALUE_SUBJECT_NAME_STRATEGY, TopicRecordNameStrategy.class.getName());
+        commandProcessorConfig.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+        commandProcessorConfig.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, KafkaAvroDeserializer.class.getName());
+        commandProcessorConfig.put(StreamsConfig.APPLICATION_ID_CONFIG, SOURCE_COMMANDS_PROCESSOR_APP_ID);
+
+        System.out.println("vinayak " + commandProcessorConfig.toString());
+
+        sourceCommandBuilder();
+
+        sourceCommandProcessor = new KafkaStreams(sourceCommandBuilder().build(), commandProcessorConfig);
+        sourceCommandProcessor.setStateListener((newState, oldState) -> {
+            if (!isRunning && newState == KafkaStreams.State.RUNNING) {
+                isRunning = true;
+                if (testListener != null) {
+                    testListener.stateStoreInitialized();
+                }
+            }
+        });
+
+        sourceCommandProcessor.setUncaughtExceptionHandler((t, e) -> log.error("Source command processor job failed", e));
+        sourceCommandProcessor.start();
+        log.info("Source commands processor job started.");
+
     }
 
-    private Source getModelSourceFromAvroSource(
-            com.homeaway.digitalplatform.streamregistry.Source avroSource) {
+    private StreamsBuilder sourceCommandBuilder() {
+
+        StreamsBuilder sourceCommandBuilder = new StreamsBuilder();
+
+        sourceCommandBuilder
+                .stream(SOURCE_COMMANDS_TOPIC)
+                .map((sourceName, command) ->
+                        new ProcessRecord().process(command))
+                .to(SOURCE_ENTITY_TOPIC_NAME);
+
+        return sourceCommandBuilder;
+    }
+
+    public enum Status {
+        NOT_RUNNING("NOT_RUNNING"),
+        STARTING("STARTING"),
+        UPDATING("UPDATING"),
+        PAUSING("PAUSING"),
+        RESUMING("RESUMING"),
+        STOPPING("STOPPING");
+
+        private final String status;
+
+        /**
+         * @param status string
+         */
+        Status(final String status) {
+            this.status = status;
+        }
+
+        @Override
+        public String toString() {
+            return status;
+        }
+    }
+
+    private KeyValue<String, com.homeaway.digitalplatform.streamregistry.Source> setNewStatus(com.homeaway.digitalplatform.streamregistry.Source source, Status status) {
+        return new KeyValue<>(source.getSourceName(), com.homeaway.digitalplatform.streamregistry.Source.newBuilder()
+                .setHeader(Header.newBuilder().setTime(System.currentTimeMillis()).build())
+                .setSourceName(source.getSourceName())
+                .setStreamName(source.getStreamName())
+                .setSourceType(source.getSourceType())
+                .setStatus(status.toString())
+                .setImperativeConfiguration(source.getImperativeConfiguration())
+                .setTags(source.getTags())
+                .build());
+    }
+
+    @Override
+    public void start() {
+        initiateSourceEntityProcessor();
+        initiateSourceCommandProcessor();
+    }
+
+
+    @Override
+    public void stop() {
+        sourceCommandProcessor.close();
+        sourceEntityProcessor.close();
+        createRequestProducer.close();
+        updateRequestProducer.close();
+        deleteProducer.close();
+        log.info("Source command processor closed");
+        log.info("Source entity processor closed");
+        log.info("Source create producer closed");
+        log.info("Source update producer closed");
+        log.info("Source delete producer closed");
+    }
+
+    private Source avroToModelSource(com.homeaway.digitalplatform.streamregistry.Source avroSource) {
         return Source.builder()
-                .streamName(avroSource.getStreamName())
                 .sourceName(avroSource.getSourceName())
                 .sourceType(avroSource.getSourceType())
-                .streamSourceConfiguration(avroSource.getStreamSourceConfiguration())
+                .streamName(avroSource.getStreamName())
+                .status(avroSource.getStatus())
+                .created(avroSource.getHeader().getTime())
+                .imperativeConfiguration(avroSource.getImperativeConfiguration())
+                .tags(avroSource.getTags())
                 .build();
     }
 
-    private AvroStreamKey getAvroKeyFromString(String streamName) {
-        return AvroStreamKey.newBuilder()
-                .setStreamName(streamName)
+    private com.homeaway.digitalplatform.streamregistry.Source modelToAvroSource(Source source, Status status) {
+        return com.homeaway.digitalplatform.streamregistry.Source.newBuilder()
+                .setHeader(Header.newBuilder().setTime(System.currentTimeMillis()).build())
+                .setSourceName(source.getSourceName())
+                .setSourceType(source.getSourceType())
+                .setStreamName(source.getStreamName())
+                .setStatus(status.toString())
+                .setImperativeConfiguration(source.getImperativeConfiguration())
+                .setTags(source.getTags())
                 .build();
     }
 
+    private class ProcessRecord<V> {
+
+        ProcessRecord() {
+        }
+
+        KeyValue process(V entity) {
+            if (entity instanceof SourceCreateRequested) {
+                return setNewStatus(((SourceCreateRequested) entity)
+                        .getSource(), Status.NOT_RUNNING);
+            } else if (entity instanceof SourceStartRequested) {
+                return setNewStatus(((SourceStartRequested) entity)
+                        .getSource(), Status.STARTING);
+            } else if (entity instanceof SourceUpdateRequested) {
+                return setNewStatus(((SourceUpdateRequested) entity)
+                        .getSource(), Status.UPDATING);
+            } else if (entity instanceof SourcePauseRequested) {
+                return setNewStatus(((SourcePauseRequested) entity)
+                        .getSource(), Status.PAUSING);
+            } else if (entity instanceof SourceResumeRequested) {
+                return setNewStatus(((SourceResumeRequested) entity)
+                        .getSource(), Status.RESUMING);
+            } else if (entity instanceof SourceStopRequested) {
+                return setNewStatus(((SourceStopRequested) entity)
+                        .getSource(), Status.STOPPING);
+            }
+            return null;
+        }
+    }
 
 }

@@ -41,8 +41,8 @@ public interface StreamSourceManager {
      * Creates the stream source in the underlying stream platform.
      * ConfigMaps guide the creation of the stream.
      *
-     * @param sourceName   the name of the source to create.
-     * @param type         the type of the source to create. Must be one of the supported types.
+     * @param sourceName   the name of the source to insert.
+     * @param type         the type of the source to insert. Must be one of the supported types.
      * @param clusterName  the name of the cluster that the stream should be created on.
      * @param configMap the map of configmaps.
      * @return the created stream source

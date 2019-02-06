@@ -71,7 +71,9 @@ public class StreamDaoImplTest {
 
     @Before
     public void setup() {
-        streamDao = new StreamDaoImpl(streamRegistryProducer, managedKStreams, TEST_ENV, regionDao, infraManager, kafkaManager, streamValidator, schemaManager);
+        streamDao = new StreamDaoImpl(streamRegistryProducer, managedKStreams,
+                TEST_ENV, regionDao, infraManager, kafkaManager,
+                streamValidator, schemaManager);
     }
 
     @Test(expected = StreamCreationException.class)

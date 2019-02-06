@@ -15,19 +15,35 @@
  */
 package com.homeaway.streamplatform.streamregistry.db.dao;
 
-import java.util.List;
+
 import java.util.Optional;
 
+import io.dropwizard.lifecycle.Managed;
+
+import com.homeaway.streamplatform.streamregistry.exceptions.SourceNotFoundException;
 import com.homeaway.streamplatform.streamregistry.model.Source;
 
-public interface SourceDao {
+/**
+ * Source type
+ */
+public interface SourceDao extends Managed {
 
-    void upsert(Source source);
+    void insert(Source source);
 
-    Optional<Source> get(String streamName, String sourceName);
+    void update(Source source);
 
-    void delete(String streamName, String sourceName);
+    Optional<Source> get(String sourceName);
 
-    List<Source> getAll(String streamName);
+    void start(String sourceName) throws SourceNotFoundException;
+
+    void pause(String sourceName) throws SourceNotFoundException;
+
+    void resume(String sourceName) throws SourceNotFoundException;
+
+    void stop(String sourceName) throws SourceNotFoundException;
+
+    String getStatus(String sourceName) throws SourceNotFoundException;
+
+    void delete(String sourceName);
 
 }

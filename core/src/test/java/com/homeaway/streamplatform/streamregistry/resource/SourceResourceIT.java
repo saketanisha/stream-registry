@@ -15,84 +15,112 @@
  */
 package com.homeaway.streamplatform.streamregistry.resource;
 
+import static org.hamcrest.core.Is.is;
+
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Properties;
+import java.util.concurrent.CompletableFuture;
 
-import javax.ws.rs.core.Response;
+import io.confluent.kafka.serializers.AbstractKafkaAvroSerDeConfig;
+import io.confluent.kafka.streams.serdes.avro.SpecificAvroSerde;
 
+import org.apache.kafka.clients.CommonClientConfigs;
+import org.apache.kafka.common.serialization.Serdes;
+import org.apache.kafka.streams.StreamsConfig;
 import org.junit.Assert;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
+import com.homeaway.streamplatform.streamregistry.db.dao.SourceDao;
+import com.homeaway.streamplatform.streamregistry.db.dao.impl.SourceDaoImpl;
 import com.homeaway.streamplatform.streamregistry.model.Source;
-import com.homeaway.streamplatform.streamregistry.model.Stream;
-import com.homeaway.streamplatform.streamregistry.utils.JsonModelBuilder;
 
 public class SourceResourceIT extends BaseResourceIT {
 
+    public static final int SOURCE_WAIT_TIME_MS = 3500;
+
+
+    public static Properties commonConfig;
+
+    private static SourceDao sourceDao;
+
+    @BeforeClass
+    public static void setUp() throws Exception {
+        commonConfig = new Properties();
+        commonConfig.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        commonConfig.put(AbstractKafkaAvroSerDeConfig.SCHEMA_REGISTRY_URL_CONFIG, schemaRegistryURL);
+        commonConfig.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, Serdes.StringSerde.class.getName());
+        commonConfig.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, SpecificAvroSerde.class.getName());
+
+        CompletableFuture<Boolean> initialized = new CompletableFuture<>();
+        sourceDao = new SourceDaoImpl(commonConfig,  () -> initialized.complete(true));
+        sourceDao.start();
+    }
+
     @Test
-    public void testSourceCRUD() throws InterruptedException {
+    public void testSourceDaoImpl() throws Exception {
 
-        Map<String, String> configuration = new HashMap<>();
-        configuration.put("foo", "bar");
+        String sourceName = "source-a";
+        String streamName = "stream-a";
 
-        Source sourceA = Source.builder()
-                .streamName("streamA")
-                .sourceName("sourceA")
+        Assert.assertNotNull(commonConfig);
+        System.out.println(commonConfig);
+
+        Source source = buildSource(sourceName, streamName, null);
+
+        sourceDao.insert(source);
+
+        // Seems to need longer time. Have more things to setup
+        Thread.sleep(SOURCE_WAIT_TIME_MS);
+
+        Optional<Source> optionalSource = sourceDao.get(sourceName);
+
+        Assert.assertThat(optionalSource.isPresent(), is(true));
+
+        Assert.assertThat("Get source should return the source that was inserted",
+                optionalSource.get().toString() , is(buildSource(sourceName, streamName, "NOT_RUNNING").toString()));
+
+        Assert.assertThat(sourceDao.getStatus(sourceName), is("NOT_RUNNING"));
+
+        sourceDao.start(sourceName);
+
+        Thread.sleep(SOURCE_WAIT_TIME_MS);
+
+        Assert.assertThat(sourceDao.getStatus(sourceName), is("STARTING"));
+
+        sourceDao.pause(sourceName);
+
+        Thread.sleep(SOURCE_WAIT_TIME_MS);
+
+        Assert.assertThat(sourceDao.getStatus(sourceName), is("PAUSING"));
+
+        sourceDao.resume(sourceName);
+
+        Thread.sleep(SOURCE_WAIT_TIME_MS);
+
+        Assert.assertThat(sourceDao.getStatus(sourceName), is("RESUMING"));
+
+        sourceDao.stop(sourceName);
+
+        Thread.sleep(SOURCE_WAIT_TIME_MS);
+
+        Assert.assertThat(sourceDao.getStatus(sourceName), is("STOPPING"));
+    }
+
+    private Source buildSource(String sourceName, String streamName, String status) {
+
+        Map<String, String> map = new HashMap<>();
+        map.put("kinesis.url", "url");
+
+        return Source.builder()
+                .sourceName(sourceName)
+                .streamName(streamName)
                 .sourceType("kinesis")
-                .streamSourceConfiguration(configuration)
+                .status(status)
+                .imperativeConfiguration(map)
+                .tags(map)
                 .build();
-
-        Stream stream = JsonModelBuilder.buildJsonStream("streamA");
-        Response response = streamResource.upsertStream("streamA", stream);
-        Assert.assertEquals(Response.Status.ACCEPTED.getStatusCode(), response.getStatus());
-
-
-        sourceResource.putSource("streamA", sourceA);
-
-        Thread.sleep(TEST_SLEEP_WAIT_MS); // wait so that the Topology can process it and materialize to KV-Store
-
-        Response sourceResponse = sourceResource.getSource("streamA", sourceA.getSourceName());
-        Assert.assertEquals(Response.Status.OK.getStatusCode(), sourceResponse.getStatus());
-
-        Source sourceB = Source.builder()
-                .streamName("streamA")
-                .sourceName("sourceB")
-                .sourceType("kafka")
-                .streamSourceConfiguration(configuration)
-                .build();
-
-        sourceResource.putSource("streamA", sourceB);
-
-        Thread.sleep(TEST_SLEEP_WAIT_MS); // wait so that the Topology can process it and materialize to KV-Store
-
-        List<Source> sources = (List<Source>) sourceResource.getAllSourcesByStream("streamA").getEntity();
-        Assert.assertEquals(2, sources.size());
-
-        Map<String, String> updatedConfiguration = new HashMap<>(configuration);
-        updatedConfiguration.put("username", "x");
-
-        Source updatedSourceA = Source.builder()
-                .streamName("streamA")
-                .sourceName("sourceA")
-                .sourceType("kinesis")
-                .streamSourceConfiguration(updatedConfiguration)
-                .build();
-
-        sourceResource.putSource("streamA", updatedSourceA);
-
-        Thread.sleep(TEST_SLEEP_WAIT_MS); // wait so that the Topology can process it and materialize to KV-Store
-
-        Source updateSourceEntity = (Source) sourceResource.getSource("streamA", updatedSourceA.getSourceName()).getEntity();
-
-        Assert.assertEquals(2, updateSourceEntity.getStreamSourceConfiguration().size());
-
-        sourceResource.deleteSource("streamA", "sourceA");
-
-        Thread.sleep(TEST_SLEEP_WAIT_MS); // wait so that the Topology can process it and materialize to KV-Store
-
-        List<Source> streamWithoutSourceA = (List<Source>) sourceResource.getAllSourcesByStream("streamA").getEntity();
-
-        Assert.assertEquals(1, streamWithoutSourceA.size());
     }
 }

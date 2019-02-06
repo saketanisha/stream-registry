@@ -50,6 +50,7 @@ public class GlobalKafkaStore<K, V> {
         this.streamProperties = streamProperties;
         this.stateStoreName = stateStoreName;
 
+        //TODO: Fix deprecated KStreamBuilder to using StreamsBuilder instead
         KStreamBuilder kStreamBuilder = new KStreamBuilder();
 
         kStreamBuilder.globalTable(topicName, stateStoreName);

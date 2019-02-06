@@ -202,7 +202,7 @@ public class StreamDaoImpl extends AbstractDao implements StreamDao, StreamValid
     }
 
     /**
-     * Verify if the Topic exists If not, create Topics in the Cluster
+     * Verify if the Topic exists If not, insert Topics in the Cluster
      *
      * @param stream the stream that will be used to verify and/or upsert topics to
      */
@@ -222,7 +222,7 @@ public class StreamDaoImpl extends AbstractDao implements StreamDao, StreamValid
             }
         } catch (Exception e) {
             throw new InternalServerErrorException(
-                    String.format("Error while creating the stream. Can't create the topic %s", stream.getName()), e);
+                    String.format("Error while creating the stream. Can't insert the topic %s", stream.getName()), e);
         }
     }
 
@@ -256,7 +256,7 @@ public class StreamDaoImpl extends AbstractDao implements StreamDao, StreamValid
 
     @Override
     public Optional<Stream> getStream(String streamName) {
-        log.info("Pulling stream information from global state-store for streamName={}", streamName);
+        log.info("Pulling stream information from global state-store for stream={}", streamName);
         Optional<AvroStream> streamValue = kStreams.getAvroStreamForKey(AvroStreamKey.newBuilder().setStreamName(streamName).build());
         return streamValue.map(AvroToJsonDTO::convertAvroToJson);
     }

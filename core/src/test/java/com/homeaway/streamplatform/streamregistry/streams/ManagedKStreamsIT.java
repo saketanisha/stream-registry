@@ -42,7 +42,7 @@ public class ManagedKStreamsIT extends BaseResourceIT {
      */
     @Test
     public void testCreateAndReadStream() throws InterruptedException {
-        String streamName = "managed-kstreams-test-create-and-read-stream";
+        String streamName = "managed-kstreams-test-insert-and-read-stream";
 
         // CREATE a stream
         AbstractMap.SimpleEntry<AvroStreamKey, AvroStream> avroMessage = sampleMessageBuilder.buildSampleMessage(streamName, OperationType.UPSERT);
@@ -67,7 +67,7 @@ public class ManagedKStreamsIT extends BaseResourceIT {
      */
     @Test
     public void testCreateAndDeleteStream() throws InterruptedException {
-        String streamName = "managed-kstreams-test-create-and-delete-stream";
+        String streamName = "managed-kstreams-test-insert-and-delete-stream";
 
         // CREATE a stream
         AbstractMap.SimpleEntry<AvroStreamKey, AvroStream> avroMessage = sampleMessageBuilder.buildSampleMessage(streamName, OperationType.UPSERT);
@@ -84,7 +84,7 @@ public class ManagedKStreamsIT extends BaseResourceIT {
         // DELETE the stream
         streamProducer.log(avroMessage.getKey(), null);
 
-        Thread.sleep(TEST_SLEEP_WAIT_MS);
+        Thread.sleep(TEST_SLEEP_WAIT_MS + 500);
 
         // Validate whether the stream is null in KV-Store
         Optional<AvroStream> nullAvroStream = streamProcessor.getAvroStreamForKey(AvroStreamKey.newBuilder().setStreamName(streamName).build());
@@ -102,7 +102,7 @@ public class ManagedKStreamsIT extends BaseResourceIT {
      */
     @Test
     public void testCreateAndUpdateAStream() throws InterruptedException {
-        String streamName = "managed-kstreams-test-create-and-update-stream";
+        String streamName = "managed-kstreams-test-insert-and-update-stream";
 
         // CREATE a stream
         AbstractMap.SimpleEntry<AvroStreamKey, AvroStream> avroMessage = sampleMessageBuilder.buildSampleMessage(streamName, OperationType.UPSERT);

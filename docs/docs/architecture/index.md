@@ -281,7 +281,7 @@ The stream also defines producer/consumer config map defaults. These defaults
 are provided to stream-bindings, producer and consumer requests once the
 stream is bound to a particular cluster.  Stream Binding config maps take
 precedence over stream-level config maps.  By providing definitions at the
-stream level, configuration is simplified and only "override" configuration
+stream level, commonConfig is simplified and only "override" commonConfig
 need be specified at the binding level.
 
 Now that we have our streams created with the necessary metadata,

@@ -17,38 +17,30 @@ package com.homeaway.streamplatform.streamregistry.model;
 
 import java.util.Map;
 
+import javax.annotation.Nullable;
 import javax.validation.constraints.NotNull;
 
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.ToString;
 
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import com.fasterxml.jackson.databind.annotation.JsonPOJOBuilder;
-
-
+@AllArgsConstructor
+@NoArgsConstructor
+@Builder
+@Data
 /**
  * Source is registered to a stream and determines the origin
  * of events for this stream.
- * A {@link Source} is a different from a {@link Producer} since a
- * source captures the CDC (Change Data Capture) of a source system.
+ * Source captures the CDC (Change Data Capture) of a source system.
  * It enables clients of Stream registry to easily register a new source
  * that's supported by Stream registry through {@link SourceType}
- * to an already registered stream.
  */
-@JsonDeserialize(builder = Source.SourceBuilder.class)
-@Builder
-@Data
 public class Source {
 
-
     /**
-     * Stream name this source is registered to
-     */
-    @NotNull
-    private String streamName;
-
-    /**
-     * Name of the source
+     * Name of source in the Source Store
      */
     @NotNull
     private String sourceName;
@@ -60,14 +52,35 @@ public class Source {
     private String sourceType;
 
     /**
-     * Key/Value map of any additional configuration this Source
-     * needs to pass in a flexible way. This map will be used as
-     * properties AS-IS and no validation will be performed on this
-     * configuration.
+     * Name of the stream this source is bound to
      */
     @NotNull
-    private Map<String, String> streamSourceConfiguration;
+    private String streamName;
 
-    @JsonPOJOBuilder(withPrefix = "")
-    public static final class SourceBuilder {}
+    /**
+     * Current status of the source
+     */
+    private String status;
+
+    /**
+     * Key/Value map of the source configuration this Source
+     * This map will be used as properties AS-IS to the downstream agents.
+     */
+    @Nullable
+    private Map<String, String> imperativeConfiguration;
+
+    /**
+     * Tags that are metadata level configuration. If this configuration is
+     * changed. The imperative managers should not be affected
+     */
+    @Nullable
+    private Map<String, String> tags;
+
+    /**
+     * Milliseconds since the epoc for source creation
+     */
+    @Nullable
+    @ToString.Exclude
+    private long created;
+
 }
