@@ -39,7 +39,7 @@ import com.homeaway.streamplatform.streamregistry.model.Source;
 
 public class SourceResourceIT extends BaseResourceIT {
 
-    public static final int SOURCE_WAIT_TIME_MS = 3500;
+    public static final int SOURCE_WAIT_TIME_MS = 5000;
 
 
     public static Properties commonConfig;
@@ -66,7 +66,6 @@ public class SourceResourceIT extends BaseResourceIT {
         String streamName = "stream-a";
 
         Assert.assertNotNull(commonConfig);
-        System.out.println(commonConfig);
 
         Source source = buildSource(sourceName, streamName, null);
 
